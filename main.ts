@@ -1,11 +1,38 @@
-// A working news-image-daily entry (Node 22, standard library only): its image is the entry.png beside this file, and
-// the program copies it to /output/entry.png. A starting point, not a winner: replace the image. The gate takes a
-// whole PNG or JPEG of at most 1 MiB and 1024 by 1024 pixels, and the judge sees exactly the bytes copied.
+// news-image-20261118 entry (Node 22, standard library only).
 //
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// The entry image lives beside this file as entry.png (a 1024x1024 JPEG in a
+// .png name, which the gate allows: it tells the format from the first bytes).
+// This program copies it to the output directory as entry.png, byte for byte,
+// every run. No network, no randomness, no timestamps in the output.
+//
+// Run it outside the grader's container with:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-copyFileSync(new URL('./entry.png', import.meta.url), join(process.env.MAKEFUN_OUTPUT_DIR ?? '/output', 'entry.png'));
+const here = dirname(fileURLToPath(import.meta.url));
+const source = join(here, 'entry.png');
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const target = join(outDir, 'entry.png');
+
+// The gate tells the format from the first bytes, so refuse a source that is
+// neither a JPEG (FFD8) nor a PNG (89 50 4E 47) instead of shipping a broken file.
+const magic = readFileSync(source).subarray(0, 4);
+const isJpeg = magic[0] === 0xff && magic[1] === 0xd8;
+const isPng = magic[0] === 0x89 && magic[1] === 0x50 && magic[2] === 0x4e && magic[3] === 0x47;
+if (!isJpeg && !isPng) {
+  throw new Error('entry.png is neither a JPEG nor a PNG');
+}
+
+mkdirSync(outDir, { recursive: true });
+copyFileSync(source, target);
+
+// Confirm the copy is whole before exiting, so a truncated write fails loudly.
+const copied = statSync(target).size;
+const original = statSync(source).size;
+if (copied !== original) {
+  throw new Error(`entry.png copy incomplete: ${copied} of ${original} bytes`);
+}
+console.log(`wrote ${target} (${copied} bytes)`);
